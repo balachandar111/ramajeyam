@@ -153,6 +153,16 @@ export const STRINGS = {
       "Thank you for sharing the details. Our customer agent will connect with you shortly.",
     restart: "Start over",
     goBack: "Back to menu",
+    // Main menu options - English
+    menuQuickCommerce: "Quick commerce order",
+    menuEcommerce: "E-commerce order",
+    menuWebsite: "Website order",
+    menuQueries: "Queries",
+    // Query options - English
+    queryNotReceived: "Product not received",
+    queryDamaged: "Product damaged",
+    queryMissed: "Product missed",
+    queryOthers: "Others",
   },
   tamil: {
     welcome: "ராமஜெயம் அரிசி பிராண்டைப் பார்வையிட்டதற்கு நன்றி 🌾",
@@ -187,6 +197,16 @@ export const STRINGS = {
       "விவரங்களைப் பகிர்ந்ததற்கு நன்றி. எங்கள் வாடிக்கையாளர் பிரதிநிதி விரைவில் உங்களைத் தொடர்பு கொள்வார்.",
     restart: "மீண்டும் தொடங்கு",
     goBack: "மெனுவிற்குத் திரும்பு",
+    // Main menu options - Tamil
+    menuQuickCommerce: "குயிக் காமர்ஸ் ஆர்டர்",
+    menuEcommerce: "இ-காமர்ஸ் ஆர்டர்",
+    menuWebsite: "இணையதள ஆர்டர்",
+    menuQueries: "கேள்விகள்",
+    // Query options - Tamil
+    queryNotReceived: "பொருள் கிடைக்கவில்லை",
+    queryDamaged: "பொருள் சேதமடைந்துள்ளது",
+    queryMissed: "பொருள் தவறிவிட்டது",
+    queryOthers: "மற்றவை",
   },
 };
 
@@ -213,10 +233,10 @@ export const FLOW = {
     type: "options",
     text: (t) => t.mainMenu,
     options: [
-      { label: "Quick commerce order", next: "quick_commerce" },
-      { label: "E-commerce order", next: "ecommerce" },
-      { label: "Website order", next: "website_order" },
-      { label: "Queries", next: "queries" },
+      { label: (t) => t.menuQuickCommerce, next: "quick_commerce" },
+      { label: (t) => t.menuEcommerce, next: "ecommerce" },
+      { label: (t) => t.menuWebsite, next: "website_order" },
+      { label: (t) => t.menuQueries, next: "queries" },
     ],
   },
 
@@ -270,15 +290,26 @@ export const FLOW = {
     type: "options",
     text: (t) => t.queriesIntro,
     options: [
-      
       {
-        label: "Product not received",
+        label: (t) => t.queryNotReceived,
         next: "query_form",
         queryType: "not_received",
       },
-      { label: "Product damaged", next: "query_form", queryType: "damaged" },
-      { label: "Product missed", next: "query_form", queryType: "missed" },
-      { label: "Others", next: "query_form", queryType: "others" },
+      {
+        label: (t) => t.queryDamaged,
+        next: "query_form",
+        queryType: "damaged",
+      },
+      {
+        label: (t) => t.queryMissed,
+        next: "query_form",
+        queryType: "missed",
+      },
+      {
+        label: (t) => t.queryOthers,
+        next: "query_form",
+        queryType: "others",
+      },
     ],
   },
 

@@ -153,7 +153,9 @@ export default function Chatbot() {
   };
 
   const handleOptionClick = (option) => {
-    setMessages((prev) => [...prev, makeUserMessage(option.label)]);
+    // Get label text - handle both string and function labels
+    const labelText = typeof option.label === "function" ? option.label(t) : option.label;
+    setMessages((prev) => [...prev, makeUserMessage(labelText)]);
 
     if (option.value) {
       setLanguage(option.value);
@@ -379,15 +381,19 @@ export default function Chatbot() {
 
           {!typing && node?.type === "options" && (
             <div className="rj-options">
-              {node.options.map((opt) => (
-                <button
-                  key={opt.label}
-                  className="rj-option-chip"
-                  onClick={() => handleOptionClick(opt)}
-                >
-                  {opt.label}
-                </button>
-              ))}
+              {node.options.map((opt) => {
+                // Get label text - handle both string and function labels
+                const labelText = typeof opt.label === "function" ? opt.label(t) : opt.label;
+                return (
+                  <button
+                    key={labelText}
+                    className="rj-option-chip"
+                    onClick={() => handleOptionClick(opt)}
+                  >
+                    {labelText}
+                  </button>
+                );
+              })}
             </div>
           )}
 
