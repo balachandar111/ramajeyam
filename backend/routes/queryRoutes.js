@@ -12,82 +12,92 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// Accept a single "attachment" file (image or pdf), capped at 5MB.
+const ALLOWED_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+];
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
-
-
-router.post('/', upload.single('attachment'), async (req, res) => {
-  try {
-    let attachmentUrl = null;
-
-    if (req.file) {
-      // Upload file buffer to Cloudinary
-      const uploadPromise = new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          { resource_type: 'auto' }, // Accepts images, pdfs, etc.
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result.secure_url);
-          }
-        );
-        stream.end(req.file.buffer);
-      });
-      attachmentUrl = await uploadPromise;
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image (jpg, png, webp, gif) or PDF files are allowed"));
     }
-
-    // Save to database
-    const newQuery = new Query({
-      ...req.body,
-      attachmentUrl,
-    });
-    
-    await newQuery.save();
-    res.status(201).json(newQuery);
-  } catch (error) {
-    console.error('Error saving query:', error);
-    res.status(500).json({ error: 'Server error while saving details.' });
-  }
+  },
 });
 
-// POST /api/queries  -> save a new customer query (chatbot form submission)
-router.post("/", async (req, res) => {
-  try {
-    const {
-      sessionId,
-      language,
-      queryType,
-      platformPurchased,
-      orderedDate,
-      product,
-      rate,
-      contactNumber,
-      description,
-    } = req.body;
-
-    if (!sessionId || !queryType) {
-      return res.status(400).json({
-        success: false,
-        message: "sessionId and queryType are required",
-      });
+// POST /api/queries -> save a new customer query (chatbot form submission),
+// optionally with a single file attachment uploaded to Cloudinary.
+router.post("/", (req, res) => {
+  upload.single("attachment")(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message =
+        uploadErr.code === "LIMIT_FILE_SIZE"
+          ? "File is too large. Max size is 5MB."
+          : uploadErr.message || "File upload failed.";
+      return res.status(400).json({ success: false, message });
     }
 
-    const newQuery = await Query.create({
-      sessionId,
-      language,
-      queryType,
-      platformPurchased,
-      orderedDate,
-      product,
-      rate,
-      contactNumber,
-      description,
-    });
+    try {
+      const {
+        sessionId,
+        language,
+        queryType,
+        platformPurchased,
+        orderedDate,
+        product,
+        rate,
+        contactNumber,
+        description,
+      } = req.body;
 
-    return res.status(201).json({ success: true, data: newQuery });
-  } catch (err) {
-    console.error("Error saving query:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
-  }
+      if (!sessionId || !queryType) {
+        return res.status(400).json({
+          success: false,
+          message: "sessionId and queryType are required",
+        });
+      }
+
+      let attachmentUrl = null;
+      if (req.file) {
+        attachmentUrl = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { resource_type: "auto", folder: "ramajeyam-chatbot/queries" },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result.secure_url);
+            }
+          );
+          stream.end(req.file.buffer);
+        });
+      }
+
+      const newQuery = await Query.create({
+        sessionId,
+        language,
+        queryType,
+        platformPurchased,
+        orderedDate,
+        product,
+        rate,
+        contactNumber,
+        description,
+        attachmentUrl,
+      });
+
+      return res.status(201).json({ success: true, data: newQuery });
+    } catch (err) {
+      console.error("Error saving query:", err);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+  });
 });
 
 // GET /api/queries -> list all queries (for an admin/agent dashboard)

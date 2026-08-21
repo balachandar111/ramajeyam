@@ -11,10 +11,13 @@ export const LINKS = {
 };
 
 // Per-platform product catalogues shown as cards once a platform is picked.
-// `image` is a real product photo URL where we could source one directly
-// from the retailer's own product page. Where a platform blocks scraping
-// (Blinkit, Amazon), we omit `image` and the UI shows a designed rice-themed
-// placeholder instead of guessing / faking a photo.
+// `image` is a real product photo URL. For KPN Fresh we could source photos
+// directly from the retailer's own product pages. Blinkit and Amazon block
+// scraping their product images, so those platforms instead use the
+// brand's own official packshots from ramajeyamrice.com (same physical
+// product, just hosted on a domain that allows direct linking). Only when
+// no matching official photo exists do we omit `image` and let the UI fall
+// back to the designed rice-themed placeholder instead of guessing.
 export const PRODUCTS = {
   kpnfresh: {
     label: "KPN Fresh",
@@ -47,14 +50,20 @@ export const PRODUCTS = {
       {
         name: "Ramajeyam Premium Idli Rice (Medium Grain)",
         url: "https://blinkit.com/prn/ramajeyam-premium-idli-rice-medium-grain/prid/653704",
+        image:
+          "https://www.ramajeyamrice.com/shop/wp-content/uploads/2021/06/RMJ-5kg-BOTTOM-PINCH-ARTWORK-IDLI-RICE-__Front__Mockup-450x450.jpg",
       },
       {
         name: "Ramajeyam Manachanallur Boiled Ponni Rice (Medium Grain)",
         url: "https://blinkit.com/prn/ramajeyam-manachanallur-boiled-ponni-rice-medium-grain/prid/682322",
+        image:
+          "https://www.ramajeyamrice.com/wp-content/uploads/2021/06/RMJ-26kg-BOPP-Bag-MANCHULAR-PONNI-__Mockup-980x1282.jpg",
       },
       {
         name: "Ramajeyam Tanjore Boiled Ponni Rice (Medium Grain)",
         url: "https://blinkit.com/prn/ramajeyam-tanjore-boiled-ponni-rice-medium-grain/prid/682577",
+        image:
+          "https://www.ramajeyamrice.com/shop/wp-content/uploads/2021/06/RMJ-5kg-BOTTOM-PINCH-ARTWORK-TANJORE-PONNI-__Front__Mockup-1-scaled.jpg",
       },
     ],
   },
@@ -132,6 +141,13 @@ export const STRINGS = {
     rateLabel: "Rate (price / quantity)",
     contactLabel: "Contact number",
     descriptionLabel: "Describe your issue",
+    attachmentLabel: "Attach a photo or PDF (optional)",
+    attachmentHint: "JPG, PNG, WEBP, GIF or PDF, up to 5MB",
+    attachmentChoose: "Choose file",
+    attachmentChange: "Change file",
+    attachmentRemove: "Remove",
+    attachmentTooLarge: "File is too large. Max size is 5MB.",
+    attachmentBadType: "Only image or PDF files are allowed.",
     submit: "Submit",
     thankYou:
       "Thank you for sharing the details. Our customer agent will connect with you shortly.",
@@ -159,6 +175,13 @@ export const STRINGS = {
     rateLabel: "விலை / அளவு",
     contactLabel: "தொடர்பு எண்",
     descriptionLabel: "உங்கள் பிரச்சனையை விவரிக்கவும்",
+    attachmentLabel: "புகைப்படம் / PDF இணைக்கவும் (விருப்பத்தேர்வு)",
+    attachmentHint: "JPG, PNG, WEBP, GIF அல்லது PDF, அதிகபட்சம் 5MB",
+    attachmentChoose: "கோப்பைத் தேர்ந்தெடுக்கவும்",
+    attachmentChange: "கோப்பை மாற்றவும்",
+    attachmentRemove: "அகற்று",
+    attachmentTooLarge: "கோப்பு மிகப் பெரியது. அதிகபட்சம் 5MB.",
+    attachmentBadType: "படம் அல்லது PDF கோப்புகள் மட்டுமே அனுமதிக்கப்படும்.",
     submit: "சமர்ப்பிக்கவும்",
     thankYou:
       "விவரங்களைப் பகிர்ந்ததற்கு நன்றி. எங்கள் வாடிக்கையாளர் பிரதிநிதி விரைவில் உங்களைத் தொடர்பு கொள்வார்.",
@@ -270,6 +293,7 @@ export const FLOW = {
       { key: "rate", labelKey: "rateLabel" },
       { key: "contactNumber", labelKey: "contactLabel" },
       { key: "description", labelKey: "descriptionLabel", multiline: true },
+      { key: "attachment", labelKey: "attachmentLabel", type: "file" },
     ],
     next: "thank_you",
   },

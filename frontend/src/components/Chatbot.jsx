@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { FLOW, STRINGS, START_NODE } from "../data/chatFlow.js";
+import { FLOW, STRINGS, START_NODE, PRODUCTS } from "../data/chatFlow.js";
 import "./Chatbot.css";
 
 const API_BASE_URL =
@@ -8,6 +8,15 @@ const API_BASE_URL =
 
 const BRAND_LOGO =
   "https://res.cloudinary.com/ds4i8pujs/image/upload/v1787234846/blingcrm/RMJ-removebg-preview_hn4mxb.png";
+
+const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_ATTACHMENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+];
 
 function getSessionId() {
   let id = sessionStorage.getItem("rj_chat_session_id");
@@ -21,8 +30,8 @@ function getSessionId() {
 function makeBotMessage(text) {
   return { id: `${Date.now()}_${Math.random()}`, sender: "bot", text };
 }
-function makeUserMessage(text) {
-  return { id: `${Date.now()}_${Math.random()}`, sender: "user", text };
+function makeUserMessage(text, extra = {}) {
+  return { id: `${Date.now()}_${Math.random()}`, sender: "user", text, ...extra };
 }
 
 // Kept the GrainIcon for the subtle background watermark field
@@ -44,6 +53,40 @@ function GrainIcon({ className }) {
   );
 }
 
+// Rice-bag illustration used when a platform doesn't allow us to source a
+// real product photo (e.g. Blinkit / Amazon block scraping). Drawn to match
+// the brand palette so it still looks intentional, not like a broken image.
+function RiceBagIllustration({ className }) {
+  return (
+    <svg viewBox="0 0 120 120" className={className} aria-hidden="true">
+      <defs>
+        <linearGradient id="rjBagGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="var(--rj-husk-soft)" />
+          <stop offset="100%" stopColor="var(--rj-husk)" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="120" height="120" rx="0" fill="url(#rjBagGrad)" />
+      <path
+        d="M40 30h40l6 12c4 8 6 16 6 26 0 22-15 38-32 38s-32-16-32-38c0-10 2-18 6-26z"
+        fill="#fff"
+        opacity="0.92"
+      />
+      <path
+        d="M46 30l-2-10a8 8 0 0 1 8-9h16a8 8 0 0 1 8 9l-2 10"
+        fill="none"
+        stroke="var(--rj-soil)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+      <line x1="44" y1="44" x2="76" y2="44" stroke="rgba(107,66,38,0.25)" strokeWidth="2" />
+      <ellipse cx="52" cy="66" rx="4.5" ry="7" fill="var(--rj-paddy)" opacity="0.85" transform="rotate(-18 52 66)" />
+      <ellipse cx="64" cy="72" rx="4.5" ry="7" fill="var(--rj-paddy-deep)" opacity="0.85" transform="rotate(10 64 72)" />
+      <ellipse cx="72" cy="58" rx="4.5" ry="7" fill="var(--rj-paddy)" opacity="0.85" transform="rotate(-32 72 58)" />
+      <ellipse cx="58" cy="54" rx="4.5" ry="7" fill="var(--rj-husk)" opacity="0.9" transform="rotate(20 58 54)" />
+    </svg>
+  );
+}
+
 function TypingBubble() {
   return (
     <div className="rj-bubble rj-bubble-bot rj-typing" aria-label="Typing">
@@ -55,13 +98,15 @@ function TypingBubble() {
 }
 
 export default function Chatbot() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [messages, setMessages] = useState([]);
   const [currentNodeId, setCurrentNodeId] = useState(START_NODE);
   const [language, setLanguage] = useState("english");
   const [pendingQueryType, setPendingQueryType] = useState(null);
   const [formValues, setFormValues] = useState({});
-  const [file, setFile] = useState(null);
+  const [attachment, setAttachment] = useState(null);
+  const [attachmentPreview, setAttachmentPreview] = useState(null);
+  const [attachmentError, setAttachmentError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [typing, setTyping] = useState(false);
@@ -131,55 +176,88 @@ export default function Chatbot() {
     setFormValues((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleFileChange = (e) => {
-    setFile(e.target.files[0] || null);
+  const clearAttachment = () => {
+    setAttachment(null);
+    setAttachmentPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setAttachmentError("");
   };
+
+  const handleAttachmentChange = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+
+    if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+      setAttachmentError(t.attachmentBadType);
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      setAttachmentError(t.attachmentTooLarge);
+      return;
+    }
+
+    setAttachmentError("");
+    setAttachmentPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
+    });
+    setAttachment(file);
+  };
+
+  // Revoke any object URL on unmount to avoid leaking memory.
+  useEffect(() => {
+    return () => {
+      if (attachmentPreview) URL.revokeObjectURL(attachmentPreview);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    if (attachmentError) return;
     setSubmitting(true);
     setError("");
-
-    // multipart/form-data so the optional attachment can travel with the
-    // rest of the fields in one request. Backend needs multer wired up
-    // (upload.single("attachment")) to receive this correctly.
-    const formData = new FormData();
-    formData.append("sessionId", sessionId.current);
-    formData.append("language", language);
-    formData.append("queryType", pendingQueryType || "general");
-
-    Object.entries(formValues).forEach(([key, value]) => {
-      formData.append(key, value);
-    });
-
-    if (file) {
-      formData.append("attachment", file);
-    }
-
     try {
-      await axios.post(`${API_BASE_URL}/queries`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+      const payload = new FormData();
+      payload.append("sessionId", sessionId.current);
+      payload.append("language", language);
+      payload.append("queryType", pendingQueryType || "general");
+      Object.entries(formValues).forEach(([key, value]) => {
+        if (value) payload.append(key, value);
       });
+      if (attachment) {
+        payload.append("attachment", attachment);
+      }
 
-      let summaryText = Object.entries(formValues)
+      const response = await axios.post(`${API_BASE_URL}/queries`, payload);
+      const savedAttachmentUrl = response?.data?.data?.attachmentUrl || null;
+
+      const summaryParts = Object.entries(formValues)
         .filter(([, v]) => v)
-        .map(([, v]) => v)
-        .join(" | ");
-
-      if (file) summaryText += ` | [Attached: ${file.name}]`;
+        .map(([, v]) => v);
 
       setMessages((prev) => [
         ...prev,
-        makeUserMessage(summaryText || "(details submitted)"),
+        makeUserMessage(summaryParts.join(" | ") || "(details submitted)", {
+          attachmentUrl: savedAttachmentUrl,
+          attachmentName: attachment?.name,
+          attachmentIsImage: attachment
+            ? attachment.type.startsWith("image/")
+            : /\.(jpe?g|png|webp|gif)$/i.test(savedAttachmentUrl || ""),
+        }),
       ]);
       setFormValues({});
-      setFile(null);
+      clearAttachment();
       const nextId = FLOW.query_form.next;
       setCurrentNodeId(nextId);
     } catch (err) {
       console.error(err);
       setError(
-        "Something went wrong while saving your details. Please try again."
+        err?.response?.data?.message ||
+          "Something went wrong while saving your details. Please try again."
       );
     } finally {
       setSubmitting(false);
@@ -189,7 +267,7 @@ export default function Chatbot() {
   const handleRestart = () => {
     setMessages([]);
     setFormValues({});
-    setFile(null);
+    clearAttachment();
     setPendingQueryType(null);
     setLanguage("english");
     setCurrentNodeId(START_NODE);
@@ -260,6 +338,32 @@ export default function Chatbot() {
               )}
               <div className={`rj-bubble rj-bubble-${m.sender}`}>
                 {m.text}
+                {m.attachmentUrl && (
+                  <div className="rj-bubble-attachment">
+                    {m.attachmentIsImage ? (
+                      <a
+                        href={m.attachmentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <img
+                          src={m.attachmentUrl}
+                          alt={m.attachmentName || "Attachment"}
+                          className="rj-bubble-attachment-img"
+                        />
+                      </a>
+                    ) : (
+                      <a
+                        href={m.attachmentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rj-bubble-attachment-file"
+                      >
+                        📄 {m.attachmentName || "View attachment"}
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -287,54 +391,150 @@ export default function Chatbot() {
             </div>
           )}
 
+          {!typing && node?.type === "products" && (
+            <>
+              <div className={`rj-product-grid rj-accent-${node.accent || ""}`}>
+                {PRODUCTS[node.platform]?.items.map((p) => (
+                  <div className="rj-product-card" key={p.url}>
+                    <div className="rj-product-media">
+                      {p.image ? (
+                        <img
+                          src={p.image}
+                          alt={p.name}
+                          className="rj-product-photo"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <RiceBagIllustration className="rj-product-illustration" />
+                      )}
+                      <span className="rj-product-platform-badge">
+                        {PRODUCTS[node.platform]?.label}
+                      </span>
+                    </div>
+                    <div className="rj-product-info">
+                      <div className="rj-product-name">{p.name}</div>
+                      <button
+                        className="rj-product-btn"
+                        onClick={() =>
+                          window.open(p.url, "_blank", "noopener,noreferrer")
+                        }
+                      >
+                        {t.viewProduct} →
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {PRODUCTS[node.platform]?.moreLink && (
+                <a
+                  className="rj-more-link"
+                  href={PRODUCTS[node.platform].moreLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t.moreProducts} →
+                </a>
+              )}
+
+              <div className="rj-options">
+                <button
+                  className="rj-option-chip"
+                  onClick={() => setCurrentNodeId("main_menu")}
+                >
+                  {t.goBack}
+                </button>
+              </div>
+            </>
+          )}
+
           {!typing && node?.type === "form" && (
             <form className="rj-form" onSubmit={handleFormSubmit}>
               <div className="rj-form-title">Order details</div>
-              {node.fields.map((field) => (
-                <label key={field.key} className="rj-form-field">
-                  <span>{t[field.labelKey]}</span>
-                  {field.multiline ? (
-                    <textarea
-                      value={formValues[field.key] || ""}
-                      onChange={(e) =>
-                        handleFormChange(field.key, e.target.value)
-                      }
-                      rows={3}
-                    />
-                  ) : (
-                    <input
-                      type={field.inputType || "text"}
-                      value={formValues[field.key] || ""}
-                      onChange={(e) =>
-                        handleFormChange(field.key, e.target.value)
-                      }
-                    />
-                  )}
-                </label>
-              ))}
+              {node.fields.map((field) =>
+                field.type === "file" ? (
+                  <div key={field.key} className="rj-form-field">
+                    <span>{t[field.labelKey]}</span>
 
-              <label className="rj-form-field">
-                <span>Upload Image/File (Optional)</span>
-                <input
-                  type="file"
-                  onChange={handleFileChange}
-                  accept="image/*,.pdf,.doc,.docx"
-                />
-                {file && (
-                  <span className="rj-file-chip">
-                    📎 {file.name}
-                    <button
-                      type="button"
-                      className="rj-file-remove"
-                      onClick={() => setFile(null)}
-                      aria-label="Remove attached file"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                )}
-              </label>
-
+                    {!attachment ? (
+                      <label className="rj-file-dropzone">
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                          onChange={handleAttachmentChange}
+                        />
+                        <span className="rj-file-dropzone-icon">📎</span>
+                        <span className="rj-file-dropzone-text">
+                          {t.attachmentChoose}
+                        </span>
+                        <span className="rj-file-dropzone-hint">
+                          {t.attachmentHint}
+                        </span>
+                      </label>
+                    ) : (
+                      <div className="rj-file-preview">
+                        {attachmentPreview ? (
+                          <img
+                            src={attachmentPreview}
+                            alt={attachment.name}
+                            className="rj-file-preview-thumb"
+                          />
+                        ) : (
+                          <span className="rj-file-preview-icon">📄</span>
+                        )}
+                        <div className="rj-file-preview-info">
+                          <span className="rj-file-preview-name">
+                            {attachment.name}
+                          </span>
+                          <span className="rj-file-preview-size">
+                            {(attachment.size / 1024).toFixed(0)} KB
+                          </span>
+                        </div>
+                        <label className="rj-file-change-btn">
+                          {t.attachmentChange}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                            onChange={handleAttachmentChange}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="rj-file-remove-btn"
+                          onClick={clearAttachment}
+                          aria-label={t.attachmentRemove}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                    {attachmentError && (
+                      <div className="rj-error">{attachmentError}</div>
+                    )}
+                  </div>
+                ) : (
+                  <label key={field.key} className="rj-form-field">
+                    <span>{t[field.labelKey]}</span>
+                    {field.multiline ? (
+                      <textarea
+                        value={formValues[field.key] || ""}
+                        onChange={(e) =>
+                          handleFormChange(field.key, e.target.value)
+                        }
+                        rows={3}
+                      />
+                    ) : (
+                      <input
+                        type={field.inputType || "text"}
+                        value={formValues[field.key] || ""}
+                        onChange={(e) =>
+                          handleFormChange(field.key, e.target.value)
+                        }
+                      />
+                    )}
+                  </label>
+                )
+              )}
               {error && <div className="rj-error">{error}</div>}
               <button
                 type="submit"
