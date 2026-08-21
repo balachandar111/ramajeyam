@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { FLOW, STRINGS, START_NODE, PRODUCTS } from "../data/chatFlow.js";
+import { FLOW, STRINGS, START_NODE } from "../data/chatFlow.js";
 import "./Chatbot.css";
 
 const API_BASE_URL =
@@ -44,40 +44,6 @@ function GrainIcon({ className }) {
   );
 }
 
-// Rice-bag illustration used when a platform doesn't allow us to source a
-// real product photo (e.g. Blinkit / Amazon block scraping). Drawn to match
-// the brand palette so it still looks intentional, not like a broken image.
-function RiceBagIllustration({ className }) {
-  return (
-    <svg viewBox="0 0 120 120" className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id="rjBagGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="var(--rj-husk-soft)" />
-          <stop offset="100%" stopColor="var(--rj-husk)" />
-        </linearGradient>
-      </defs>
-      <rect x="0" y="0" width="120" height="120" rx="0" fill="url(#rjBagGrad)" />
-      <path
-        d="M40 30h40l6 12c4 8 6 16 6 26 0 22-15 38-32 38s-32-16-32-38c0-10 2-18 6-26z"
-        fill="#fff"
-        opacity="0.92"
-      />
-      <path
-        d="M46 30l-2-10a8 8 0 0 1 8-9h16a8 8 0 0 1 8 9l-2 10"
-        fill="none"
-        stroke="var(--rj-soil)"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
-      <line x1="44" y1="44" x2="76" y2="44" stroke="rgba(107,66,38,0.25)" strokeWidth="2" />
-      <ellipse cx="52" cy="66" rx="4.5" ry="7" fill="var(--rj-paddy)" opacity="0.85" transform="rotate(-18 52 66)" />
-      <ellipse cx="64" cy="72" rx="4.5" ry="7" fill="var(--rj-paddy-deep)" opacity="0.85" transform="rotate(10 64 72)" />
-      <ellipse cx="72" cy="58" rx="4.5" ry="7" fill="var(--rj-paddy)" opacity="0.85" transform="rotate(-32 72 58)" />
-      <ellipse cx="58" cy="54" rx="4.5" ry="7" fill="var(--rj-husk)" opacity="0.9" transform="rotate(20 58 54)" />
-    </svg>
-  );
-}
-
 function TypingBubble() {
   return (
     <div className="rj-bubble rj-bubble-bot rj-typing" aria-label="Typing">
@@ -95,6 +61,7 @@ export default function Chatbot() {
   const [language, setLanguage] = useState("english");
   const [pendingQueryType, setPendingQueryType] = useState(null);
   const [formValues, setFormValues] = useState({});
+  const [file, setFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [typing, setTyping] = useState(false);
@@ -164,28 +131,49 @@ export default function Chatbot() {
     setFormValues((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleFileChange = (e) => {
+    setFile(e.target.files[0] || null);
+  };
+
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setError("");
+
+    // multipart/form-data so the optional attachment can travel with the
+    // rest of the fields in one request. Backend needs multer wired up
+    // (upload.single("attachment")) to receive this correctly.
+    const formData = new FormData();
+    formData.append("sessionId", sessionId.current);
+    formData.append("language", language);
+    formData.append("queryType", pendingQueryType || "general");
+
+    Object.entries(formValues).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
+
+    if (file) {
+      formData.append("attachment", file);
+    }
+
     try {
-      await axios.post(`${API_BASE_URL}/queries`, {
-        sessionId: sessionId.current,
-        language,
-        queryType: pendingQueryType || "general",
-        ...formValues,
+      await axios.post(`${API_BASE_URL}/queries`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
+
+      let summaryText = Object.entries(formValues)
+        .filter(([, v]) => v)
+        .map(([, v]) => v)
+        .join(" | ");
+
+      if (file) summaryText += ` | [Attached: ${file.name}]`;
 
       setMessages((prev) => [
         ...prev,
-        makeUserMessage(
-          Object.entries(formValues)
-            .filter(([, v]) => v)
-            .map(([, v]) => v)
-            .join(" | ") || "(details submitted)"
-        ),
+        makeUserMessage(summaryText || "(details submitted)"),
       ]);
       setFormValues({});
+      setFile(null);
       const nextId = FLOW.query_form.next;
       setCurrentNodeId(nextId);
     } catch (err) {
@@ -201,6 +189,7 @@ export default function Chatbot() {
   const handleRestart = () => {
     setMessages([]);
     setFormValues({});
+    setFile(null);
     setPendingQueryType(null);
     setLanguage("english");
     setCurrentNodeId(START_NODE);
@@ -298,63 +287,6 @@ export default function Chatbot() {
             </div>
           )}
 
-          {!typing && node?.type === "products" && (
-            <>
-              <div className={`rj-product-grid rj-accent-${node.accent || ""}`}>
-                {PRODUCTS[node.platform]?.items.map((p) => (
-                  <div className="rj-product-card" key={p.url}>
-                    <div className="rj-product-media">
-                      {p.image ? (
-                        <img
-                          src={p.image}
-                          alt={p.name}
-                          className="rj-product-photo"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <RiceBagIllustration className="rj-product-illustration" />
-                      )}
-                      <span className="rj-product-platform-badge">
-                        {PRODUCTS[node.platform]?.label}
-                      </span>
-                    </div>
-                    <div className="rj-product-info">
-                      <div className="rj-product-name">{p.name}</div>
-                      <button
-                        className="rj-product-btn"
-                        onClick={() =>
-                          window.open(p.url, "_blank", "noopener,noreferrer")
-                        }
-                      >
-                        {t.viewProduct} →
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {PRODUCTS[node.platform]?.moreLink && (
-                <a
-                  className="rj-more-link"
-                  href={PRODUCTS[node.platform].moreLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {t.moreProducts} →
-                </a>
-              )}
-
-              <div className="rj-options">
-                <button
-                  className="rj-option-chip"
-                  onClick={() => setCurrentNodeId("main_menu")}
-                >
-                  {t.goBack}
-                </button>
-              </div>
-            </>
-          )}
-
           {!typing && node?.type === "form" && (
             <form className="rj-form" onSubmit={handleFormSubmit}>
               <div className="rj-form-title">Order details</div>
@@ -380,6 +312,29 @@ export default function Chatbot() {
                   )}
                 </label>
               ))}
+
+              <label className="rj-form-field">
+                <span>Upload Image/File (Optional)</span>
+                <input
+                  type="file"
+                  onChange={handleFileChange}
+                  accept="image/*,.pdf,.doc,.docx"
+                />
+                {file && (
+                  <span className="rj-file-chip">
+                    📎 {file.name}
+                    <button
+                      type="button"
+                      className="rj-file-remove"
+                      onClick={() => setFile(null)}
+                      aria-label="Remove attached file"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+              </label>
+
               {error && <div className="rj-error">{error}</div>}
               <button
                 type="submit"
