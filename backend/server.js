@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
 const queryRoutes = require("./routes/queryRoutes");
+const voiceRoutes = require("./routes/voiceRoutes");
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/queries", queryRoutes);
+app.use("/api/voice", voiceRoutes);
 
 // Catch CORS errors thrown by the origin callback above and return a clean
 // 403 instead of an unhandled 500, so real errors are easier to spot in logs.
