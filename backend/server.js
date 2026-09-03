@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
 const queryRoutes = require("./routes/queryRoutes");
+const voiceRoutes = require("./routes/voiceRoutes");
 
 const app = express();
 
@@ -45,6 +46,7 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/queries", queryRoutes);
+app.use("/api/voice", voiceRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
